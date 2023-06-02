@@ -1,0 +1,119 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      args:
+        user: laravel
+        uid: 1000
+      context: .
+      dockerfile: docker/app.dockerfile
+    image: testssd-app
+    container_name: testssd-app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    depends_on:
+      - db
+      # - redisinsight
+    volumes:
+      - .:/var/www/html:delegated
+      - ./docker/php/conf.d/xdebug.ini:/usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+      - ./docker/php/conf.d/error_reporting.ini:/usr/local/etc/php/conf.d/error_reporting.ini
+    networks:
+      - testssd-net
+
+  nginx:
+    image: nginx:1.17-alpine
+    container_name: testssd-nginx
+    restart: unless-stopped
+    ports:
+      - '${WEB_SERVER_PORT:-8080}:80'
+    volumes:
+      - .:/var/www/html
+      - ./docker/nginx:/etc/nginx/conf.d
+    networks:
+      - testssd-net
+
+  db:
+    image: 'mysql:5.7.29'
+    container_name: testssd-db
+    restart: unless-stopped
+    ports:
+      - '${FORWARD_DB_PORT:-3306}:3306'
+    environment:
+      MYSQL_ROOT_PASSWORD: '${DB_PASSWORD}'
+      MYSQL_DATABASE: '${DB_DATABASE}'
+      MYSQL_USER: '${DB_USERNAME}'
+      MYSQL_PASSWORD: '${DB_PASSWORD}'
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+    volumes:
+      - '.:/var/www/html'
+      - 'testssd-mysql:/var/lib/mysql'
+    networks:
+      - testssd-net
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: testssd-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - PMA_HOST=${DB_HOST}
+      - PMA_USER=${DB_USERNAME}
+      - PMA_PASSWORD=${DB_PASSWORD}
+      - UPLOAD_LIMIT=30M
+    depends_on:
+      - db
+    networks:
+      - testssd-net
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: testssd-mailhog
+    restart: unless-stopped
+    ports:
+      - 1025:1025 # smtp server
+      - 8025:8025 # web ui
+    networks:
+      - testssd-net
+  #  queue:
+  #    image: rabbitmq:3-management-alpine
+  #    container_name: testssd-queue
+  #    healthcheck:
+  #      test: rabbitmq-diagnostics -q ping
+  #    ports:
+  #      - '5672:5672'
+  #      - '15672:15672'
+  #    networks:
+  #      - testssd-net
+
+  # redis:
+  #   image: redis:7.0-rc2
+  #   container_name: testssd-redis
+  #   volumes:
+  #     - 'testssd-redis:/data'
+  #   ports:
+  #     - '${FORWARD_REDIS_PORT:-6379}:6379'
+  #   networks:
+  #     - testssd-net
+
+  # redisinsight:
+  #   image: redislabs/redisinsight:1.11.1
+  #   container_name: testssd-redisinsight
+  #   depends_on:
+  #     - redis
+  #   ports:
+  #     - '8001:8001'
+  #   networks:
+  #     - testssd-net
+
+networks:
+  testssd-net:
+    driver: bridge
+
+volumes:
+  testssd-mysql:
+    driver: local
+#  testssd-redis:
+#    driver: local
